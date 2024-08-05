@@ -35,6 +35,8 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Symfony\Component\VarDumper\VarDumper;
+use GuzzleHttp\Promise\RejectedPromise;
+use Illuminate\Http\Client\ConnectionException;
 
 class HttpClientTest extends TestCase
 {
@@ -2049,6 +2051,23 @@ class HttpClientTest extends TestCase
         $this->assertCount(1, $whenAttempts);
 
         $this->factory->assertSentCount(1);
+    }
+
+    public function testHandleRequestExeptionWithNoResponseInPoolConsideredConnectionException()
+    {
+        $requestException = new \GuzzleHttp\Exception\RequestException('Error', new \GuzzleHttp\Psr7\Request('GET', '/'));
+        $this->factory->fake([
+            'noresponse.com' => new RejectedPromise($requestException)
+        ]);
+
+        $responses = $this->factory->pool(function (Pool $pool) {
+            return [
+                $pool->get('noresponse.com'),
+            ];
+        });
+
+        self::assertInstanceOf(ConnectionException::class, $responses[0]);
+        self::assertSame($requestException, $responses[0]->getPrevious());
     }
 
     public function testRequestExceptionIsNotReturnedWhenDisabledAndRetriesExhaustedInPool()
